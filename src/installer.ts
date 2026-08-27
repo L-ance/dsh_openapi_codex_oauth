@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync, rmSync, rmdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, rmdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join, parse, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,6 +8,9 @@ import { codexCommand } from './codex-command.js'
 import { codexHome } from './paths.js'
 
 const PACKAGE_NAME = 'dsh-openapi-codex-oauth'
+const RELEASE_BASE_URL = 'https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download'
+const DSH_PACKAGE = '@deepseek-ai/dsh@0.1.1-rc.2'
+const DEFAULT_PNPM_VERSION = '11.7.0'
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const packageManifest = JSON.parse(
   readFileSync(join(packageRoot, 'package.json'), 'utf8'),
@@ -46,17 +49,44 @@ function hasPlugin(profile: string): boolean {
   return dependencies !== null && typeof dependencies === 'object' && PACKAGE_NAME in dependencies
 }
 
+function releaseTarget(): string {
+  const version = packageManifest.version
+  return `${RELEASE_BASE_URL}/v${version}/${PACKAGE_NAME}-${version}.tgz`
+}
+
+function profilePnpmVersion(profile: string): string {
+  const modulesManifest = join(dshHome(), 'profiles', profile, 'node_modules', '.modules.yaml')
+  if (!existsSync(modulesManifest)) return DEFAULT_PNPM_VERSION
+  try {
+    const contents = readFileSync(modulesManifest, 'utf8')
+    const match = contents.match(/^\s*"?packageManager"?\s*:\s*["']?pnpm@([^"'\s]+)["']?\s*$/m)
+    const version = match?.[1]
+    return version !== undefined && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)
+      ? version
+      : DEFAULT_PNPM_VERSION
+  } catch {
+    return DEFAULT_PNPM_VERSION
+  }
+}
+
 function runDsh(profile: string, command: 'add' | 'remove', target: string): boolean {
   const executable = process.platform === 'win32' ? 'npx.cmd' : 'npx'
+  const pnpmVersion = profilePnpmVersion(profile)
+  const home = dshHome()
+  mkdirSync(home, { recursive: true })
+  console.log(`Using ${DSH_PACKAGE} with pnpm@${pnpmVersion} for profile ${profile}.`)
   const result = spawnSync(executable, [
     '--yes',
-    '@deepseek-ai/dsh',
+    `--package=pnpm@${pnpmVersion}`,
+    'pnpm',
+    'dlx',
+    DSH_PACKAGE,
     'plugin',
     '--profile',
     profile,
     command,
     target,
-  ], { stdio: 'inherit' })
+  ], { cwd: home, stdio: 'inherit' })
   if (result.error !== undefined) {
     console.error(result.error.message)
     return false
@@ -148,7 +178,7 @@ if (command === 'install') {
   if (options.purgeAuth) usage()
   const target = options.local
     ? packageRoot
-    : `${PACKAGE_NAME}@${packageManifest.version}`
+    : releaseTarget()
   let ok = true
   for (const profile of installProfiles(options.profiles)) {
     ok = runDsh(profile, 'add', target) && ok

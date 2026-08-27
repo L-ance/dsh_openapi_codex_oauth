@@ -12,41 +12,50 @@ The plugin starts the official Codex App Server from `@openai/codex`. App Server
 - DeepSeek Harness `0.1.1-rc.2` (the peer range also accepts `0.1.0-rc.6` and newer compatible RCs)
 - A ChatGPT account with Codex access
 
-## Build and install locally
+## Installation
 
-Install the prebuilt package directly from GitHub Releases:
+### Option 1: install the Release with npx (recommended)
+
+This does not require a DSH or plugin source checkout, or a globally installed pnpm. It runs the installer directly from the GitHub Release and registers the plugin in `~/.dsh/profiles/web`:
 
 ```sh
-pnpm dsh plugin --profile web add https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.1.0/dsh-openapi-codex-oauth-0.1.0.tgz
+PLUGIN_URL='https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.0/dsh-openapi-codex-oauth-0.2.0.tgz'
+npx --yes --package="$PLUGIN_URL" dsh-openapi-codex-oauth install --profile web
+```
+
+If the npm registry times out on your network, use npmmirror for this command only:
+
+```sh
+PLUGIN_URL='https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.0/dsh-openapi-codex-oauth-0.2.0.tgz'
+npm_config_registry=https://registry.npmmirror.com \
+  npx --yes --package="$PLUGIN_URL" dsh-openapi-codex-oauth install --profile web
+```
+
+The installer pins the tested `@deepseek-ai/dsh@0.1.1-rc.2`. For an existing profile, it reads `node_modules/.modules.yaml` and runs the pnpm version that created that profile, preventing `ERR_PNPM_UNEXPECTED_STORE`.
+
+Start the npm-distributed DSH launcher with:
+
+```sh
+npx --yes @deepseek-ai/dsh@0.1.1-rc.2 web
+```
+
+If you normally launch from a DSH source checkout, keep using:
+
+```sh
 pnpm dsh web
 ```
 
-The tarball already contains the compiled `lib`, so it does not trigger pnpm 10's build-script restrictions for Git dependencies.
-
-Build and install from a local checkout:
+### Option 2: build and install from plugin source
 
 ```sh
+git clone https://github.com/L-ance/dsh_openapi_codex_oauth.git
+cd dsh_openapi_codex_oauth
 npm install
 npm test
-npm pack
-dsh plugin --profile web add ./dsh-openapi-codex-oauth-0.1.0.tgz
-dsh web
-```
-
-For local development, install the current checkout directly:
-
-```sh
-npm run build
 node lib/installer.js install --local --profile web
 ```
 
-After the package is published to npm, its installer can register the plugin in `web`, `headless`, and existing custom profiles:
-
-```sh
-npx -y dsh-openapi-codex-oauth install
-```
-
-Restart a running DSH process after installing or updating the plugin.
+`--local` installs the current build directory into the DSH profile and is intended for development. Restart a running DSH process after installing or updating the plugin.
 
 ## Sign in to ChatGPT
 
@@ -63,13 +72,14 @@ For safety, the Web login, logout, and account-status routes accept only same-or
 ### Terminal
 
 ```sh
-dsh plugin --profile headless exec dsh-codex-login
+PLUGIN_URL='https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.0/dsh-openapi-codex-oauth-0.2.0.tgz'
+npx --yes --package="$PLUGIN_URL" dsh-codex-login
 ```
 
 Use device-code login on a headless or remote machine:
 
 ```sh
-dsh plugin --profile headless exec dsh-codex-login --device-auth
+npx --yes --package="$PLUGIN_URL" dsh-codex-login --device-auth
 ```
 
 Authentication state is stored under `~/.deepseek-harness/codex-app-server`. Set `DSH_CODEX_HOME` to use another isolated directory. Codex owns every file in that directory.
@@ -114,8 +124,9 @@ The App Server instance disables Codex's built-in shell, browser, MCP, plugin, a
 - `uninstall` keeps the isolated login by default. Only an explicit `--purge-auth` signs out and removes the authentication directory.
 
 ```sh
-npx -y dsh-openapi-codex-oauth uninstall
-npx -y dsh-openapi-codex-oauth uninstall --purge-auth
+PLUGIN_URL='https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.0/dsh-openapi-codex-oauth-0.2.0.tgz'
+npx --yes --package="$PLUGIN_URL" dsh-openapi-codex-oauth uninstall --profile web
+npx --yes --package="$PLUGIN_URL" dsh-openapi-codex-oauth uninstall --profile web --purge-auth
 ```
 
 ## Limitations

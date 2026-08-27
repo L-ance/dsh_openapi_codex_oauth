@@ -1,12 +1,15 @@
 name: Upload release package
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to build and update
+        description: Release tag to create or update from main
         required: true
-        default: v0.1.0
+        default: v0.2.0
 
 permissions:
   contents: write
@@ -15,10 +18,10 @@ jobs:
   upload:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out release tag
+      - name: Check out release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ github.event_name == 'push' && github.ref_name || 'main' }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -27,16 +30,35 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Test package
         run: npm test
 
       - name: Build release tarball
-        run: npm pack
+        id: pack
+        run: |
+          PACKAGE_FILE="$(npm pack --silent)"
+          echo "file=$PACKAGE_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Validate release version
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          test "$RELEASE_TAG" = "v$PACKAGE_VERSION"
+
+      - name: Create release if needed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --generate-notes
 
       - name: Upload release asset
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
-        run: gh release upload "$RELEASE_TAG" dsh-openapi-codex-oauth-0.1.0.tgz --clobber
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+          PACKAGE_FILE: ${{ steps.pack.outputs.file }}
+        run: gh release upload "$RELEASE_TAG" "$PACKAGE_FILE" --clobber
