@@ -1,6 +1,17 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, rmdirSync } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  rmdirSync,
+  writeFileSync,
+} from 'node:fs'
+import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join, parse, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,13 +19,22 @@ import { codexCommand } from './codex-command.js'
 import { codexHome } from './paths.js'
 
 const PACKAGE_NAME = 'dsh-openapi-codex-oauth'
-const RELEASE_BASE_URL = 'https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download'
 const DSH_PACKAGE = '@deepseek-ai/dsh@0.1.1-rc.2'
 const DEFAULT_PNPM_VERSION = '11.7.0'
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)))
+const require = createRequire(import.meta.url)
 const packageManifest = JSON.parse(
   readFileSync(join(packageRoot, 'package.json'), 'utf8'),
-) as { version: string }
+) as Record<string, unknown> & {
+  version: string
+  dependencies?: Record<string, string>
+  files?: string[]
+}
+const CODEX_VERSION = packageManifest.dependencies?.['@openai/codex']
+
+if (CODEX_VERSION === undefined) {
+  throw new Error('package.json must declare @openai/codex as a dependency')
+}
 
 interface CliOptions {
   profiles: string[]
@@ -49,9 +69,76 @@ function hasPlugin(profile: string): boolean {
   return dependencies !== null && typeof dependencies === 'object' && PACKAGE_NAME in dependencies
 }
 
-function releaseTarget(): string {
-  const version = packageManifest.version
-  return `${RELEASE_BASE_URL}/v${version}/${PACKAGE_NAME}-${version}.tgz`
+function packDirectory(source: string): string | undefined {
+  const packages = join(dshHome(), 'packages')
+  const cache = join(dshHome(), 'cache', 'npm')
+  mkdirSync(packages, { recursive: true })
+  mkdirSync(cache, { recursive: true })
+
+  const executable = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+  const result = spawnSync(executable, [
+    'pack',
+    source,
+    '--pack-destination',
+    packages,
+    '--silent',
+  ], {
+    cwd: dshHome(),
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      npm_config_audit: 'false',
+      npm_config_cache: cache,
+      npm_config_fund: 'false',
+    },
+    stdio: ['inherit', 'pipe', 'inherit'],
+  })
+  if (result.error !== undefined) {
+    console.error(result.error.message)
+    return undefined
+  }
+  const archiveName = result.stdout.trim().split(/\r?\n/).at(-1)
+  if (result.status !== 0 || archiveName === undefined || archiveName.length === 0) {
+    console.error(`Could not package ${source}`)
+    return undefined
+  }
+  const target = join(packages, archiveName)
+  if (!existsSync(target)) {
+    console.error(`npm reported ${archiveName}, but the archive was not created`)
+    return undefined
+  }
+  console.log(`Prepared ${target}`)
+  return target
+}
+
+function packPluginForDsh(): string | undefined {
+  const files = packageManifest.files
+  if (files === undefined) {
+    console.error('package.json must declare the files included in the plugin')
+    return undefined
+  }
+
+  const stagingParent = join(dshHome(), 'cache', 'installer')
+  mkdirSync(stagingParent, { recursive: true })
+  const staging = mkdtempSync(join(stagingParent, 'plugin-'))
+  try {
+    for (const entry of files) {
+      const source = join(packageRoot, entry)
+      if (existsSync(source)) {
+        cpSync(source, join(staging, entry), { recursive: true })
+      }
+    }
+
+    const manifest = structuredClone(packageManifest)
+    if (manifest.dependencies !== undefined) {
+      delete manifest.dependencies['@openai/codex']
+      if (Object.keys(manifest.dependencies).length === 0) delete manifest.dependencies
+    }
+    writeFileSync(join(staging, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`)
+    return packDirectory(staging)
+  } finally {
+    rmSync(staging, { recursive: true, force: true })
+  }
 }
 
 function profilePnpmVersion(profile: string): string {
@@ -69,7 +156,24 @@ function profilePnpmVersion(profile: string): string {
   }
 }
 
-function runDsh(profile: string, command: 'add' | 'remove', target: string): boolean {
+function platformCodexPackageName(): string {
+  return `@openai/codex-${process.platform}-${process.arch}`
+}
+
+function platformCodexInstallTarget(): string | undefined {
+  let packageJson: string
+  try {
+    packageJson = require.resolve(`${platformCodexPackageName()}/package.json`)
+  } catch {
+    console.error('The native Codex package is unavailable. Run the documented npx command without --omit=optional.')
+    return undefined
+  }
+  const archive = packDirectory(dirname(packageJson))
+  if (archive === undefined) process.exit(1)
+  return `${platformCodexPackageName()}@file:${archive}`
+}
+
+function runDsh(profile: string, command: 'add' | 'remove', targets: string[]): boolean {
   const executable = process.platform === 'win32' ? 'npx.cmd' : 'npx'
   const pnpmVersion = profilePnpmVersion(profile)
   const home = dshHome()
@@ -85,7 +189,7 @@ function runDsh(profile: string, command: 'add' | 'remove', target: string): boo
     '--profile',
     profile,
     command,
-    target,
+    ...targets,
   ], { cwd: home, stdio: 'inherit' })
   if (result.error !== undefined) {
     console.error(result.error.message)
@@ -176,12 +280,12 @@ const options = parseOptions(rawOptions)
 
 if (command === 'install') {
   if (options.purgeAuth) usage()
-  const target = options.local
-    ? packageRoot
-    : releaseTarget()
+  const target = packPluginForDsh()
+  const nativeTarget = platformCodexInstallTarget()
+  if (target === undefined || nativeTarget === undefined) process.exit(1)
   let ok = true
   for (const profile of installProfiles(options.profiles)) {
-    ok = runDsh(profile, 'add', target) && ok
+    ok = runDsh(profile, 'add', [target, nativeTarget]) && ok
   }
   if (ok) console.log(`Installed ${PACKAGE_NAME} for the selected DeepSeek Harness profiles.`)
   else process.exitCode = 1
@@ -189,7 +293,7 @@ if (command === 'install') {
   if (options.local) usage()
   let ok = true
   for (const profile of uninstallProfiles(options.profiles)) {
-    ok = runDsh(profile, 'remove', PACKAGE_NAME) && ok
+    ok = runDsh(profile, 'remove', [PACKAGE_NAME, platformCodexPackageName()]) && ok
   }
   if (options.purgeAuth) ok = purgeAuthentication() && ok
   if (ok) console.log(`Removed ${PACKAGE_NAME} from the selected DeepSeek Harness profiles.`)

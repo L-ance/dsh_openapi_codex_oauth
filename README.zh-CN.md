@@ -19,19 +19,10 @@
 不需要克隆 DSH 或本插件源码，也不需要全局安装 pnpm。下面的命令从 GitHub Release 临时运行安装器，并把插件注册到 `~/.dsh/profiles/web`：
 
 ```sh
-PLUGIN_URL='https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.0/dsh-openapi-codex-oauth-0.2.0.tgz'
-npx --yes --package="$PLUGIN_URL" dsh-openapi-codex-oauth install --profile web
+npx --yes --package=https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.1/dsh-openapi-codex-oauth-0.2.1.tgz dsh-openapi-codex-oauth install --profile web
 ```
 
-如果访问 npm 官方源超时，可只对本次安装使用 npmmirror：
-
-```sh
-PLUGIN_URL='https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.0/dsh-openapi-codex-oauth-0.2.0.tgz'
-npm_config_registry=https://registry.npmmirror.com \
-  npx --yes --package="$PLUGIN_URL" dsh-openapi-codex-oauth install --profile web
-```
-
-安装器固定使用已验证的 `@deepseek-ai/dsh@0.1.1-rc.2`。如果 profile 已经存在，安装器会读取 `node_modules/.modules.yaml` 并使用创建该 profile 的 pnpm 版本，从而避免 `ERR_PNPM_UNEXPECTED_STORE`。
+安装器会把当前 Release 和适用于当前系统的 Codex 原生包整理成稳定的本地 tarball，再注册到 DSH。它固定使用已验证的 `@deepseek-ai/dsh@0.1.1-rc.2`；如果 profile 已经存在，还会读取 `node_modules/.modules.yaml` 并使用创建该 profile 的 pnpm 版本，从而避免 `ERR_PNPM_UNEXPECTED_STORE` 和远程 tarball integrity 缺失。
 
 用 npm 版 DSH 启动 Web：
 
@@ -55,7 +46,7 @@ npm test
 node lib/installer.js install --local --profile web
 ```
 
-`--local` 会把当前构建目录安装到 DSH profile，适合开发和调试。安装或更新后需要重启正在运行的 DSH 进程。
+`--local` 会打包当前源码构建并安装到 DSH profile，适合开发和调试。安装或更新后需要重启正在运行的 DSH 进程。
 
 ## 登录 ChatGPT
 
@@ -72,14 +63,13 @@ node lib/installer.js install --local --profile web
 ### 终端登录
 
 ```sh
-PLUGIN_URL='https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.0/dsh-openapi-codex-oauth-0.2.0.tgz'
-npx --yes --package="$PLUGIN_URL" dsh-codex-login
+npx --yes --package=https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.1/dsh-openapi-codex-oauth-0.2.1.tgz dsh-codex-login
 ```
 
 无浏览器或远程环境可以使用设备码：
 
 ```sh
-npx --yes --package="$PLUGIN_URL" dsh-codex-login --device-auth
+npx --yes --package=https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.1/dsh-openapi-codex-oauth-0.2.1.tgz dsh-codex-login --device-auth
 ```
 
 登录数据保存在 `~/.deepseek-harness/codex-app-server`，也可以用 `DSH_CODEX_HOME` 指定独立目录。该目录中的文件完全由 Codex 管理。
@@ -126,9 +116,8 @@ Codex 内建的 Shell、浏览器、MCP、插件和多 Agent 能力在此 App Se
 完整卸载：
 
 ```sh
-PLUGIN_URL='https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.0/dsh-openapi-codex-oauth-0.2.0.tgz'
-npx --yes --package="$PLUGIN_URL" dsh-openapi-codex-oauth uninstall --profile web
-npx --yes --package="$PLUGIN_URL" dsh-openapi-codex-oauth uninstall --profile web --purge-auth
+npx --yes --omit=optional --package=https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.1/dsh-openapi-codex-oauth-0.2.1.tgz dsh-openapi-codex-oauth uninstall --profile web
+npx --yes --package=https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.1/dsh-openapi-codex-oauth-0.2.1.tgz dsh-openapi-codex-oauth uninstall --profile web --purge-auth
 ```
 
 ## 已知限制

@@ -19,19 +19,10 @@ The plugin starts the official Codex App Server from `@openai/codex`. App Server
 This does not require a DSH or plugin source checkout, or a globally installed pnpm. It runs the installer directly from the GitHub Release and registers the plugin in `~/.dsh/profiles/web`:
 
 ```sh
-PLUGIN_URL='https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.0/dsh-openapi-codex-oauth-0.2.0.tgz'
-npx --yes --package="$PLUGIN_URL" dsh-openapi-codex-oauth install --profile web
+npx --yes --package=https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.1/dsh-openapi-codex-oauth-0.2.1.tgz dsh-openapi-codex-oauth install --profile web
 ```
 
-If the npm registry times out on your network, use npmmirror for this command only:
-
-```sh
-PLUGIN_URL='https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.0/dsh-openapi-codex-oauth-0.2.0.tgz'
-npm_config_registry=https://registry.npmmirror.com \
-  npx --yes --package="$PLUGIN_URL" dsh-openapi-codex-oauth install --profile web
-```
-
-The installer pins the tested `@deepseek-ai/dsh@0.1.1-rc.2`. For an existing profile, it reads `node_modules/.modules.yaml` and runs the pnpm version that created that profile, preventing `ERR_PNPM_UNEXPECTED_STORE`.
+The installer repacks the current Release and the native Codex package for your platform into stable local tarballs before registering them with DSH. It pins the tested `@deepseek-ai/dsh@0.1.1-rc.2`; for an existing profile, it also reads `node_modules/.modules.yaml` and runs the pnpm version that created that profile. This prevents both `ERR_PNPM_UNEXPECTED_STORE` and missing remote-tarball integrity entries.
 
 Start the npm-distributed DSH launcher with:
 
@@ -55,7 +46,7 @@ npm test
 node lib/installer.js install --local --profile web
 ```
 
-`--local` installs the current build directory into the DSH profile and is intended for development. Restart a running DSH process after installing or updating the plugin.
+`--local` packages the current source build and installs it into the DSH profile, which is useful for development. Restart a running DSH process after installing or updating the plugin.
 
 ## Sign in to ChatGPT
 
@@ -72,14 +63,13 @@ For safety, the Web login, logout, and account-status routes accept only same-or
 ### Terminal
 
 ```sh
-PLUGIN_URL='https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.0/dsh-openapi-codex-oauth-0.2.0.tgz'
-npx --yes --package="$PLUGIN_URL" dsh-codex-login
+npx --yes --package=https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.1/dsh-openapi-codex-oauth-0.2.1.tgz dsh-codex-login
 ```
 
 Use device-code login on a headless or remote machine:
 
 ```sh
-npx --yes --package="$PLUGIN_URL" dsh-codex-login --device-auth
+npx --yes --package=https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.1/dsh-openapi-codex-oauth-0.2.1.tgz dsh-codex-login --device-auth
 ```
 
 Authentication state is stored under `~/.deepseek-harness/codex-app-server`. Set `DSH_CODEX_HOME` to use another isolated directory. Codex owns every file in that directory.
@@ -124,9 +114,8 @@ The App Server instance disables Codex's built-in shell, browser, MCP, plugin, a
 - `uninstall` keeps the isolated login by default. Only an explicit `--purge-auth` signs out and removes the authentication directory.
 
 ```sh
-PLUGIN_URL='https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.0/dsh-openapi-codex-oauth-0.2.0.tgz'
-npx --yes --package="$PLUGIN_URL" dsh-openapi-codex-oauth uninstall --profile web
-npx --yes --package="$PLUGIN_URL" dsh-openapi-codex-oauth uninstall --profile web --purge-auth
+npx --yes --omit=optional --package=https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.1/dsh-openapi-codex-oauth-0.2.1.tgz dsh-openapi-codex-oauth uninstall --profile web
+npx --yes --package=https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.2.1/dsh-openapi-codex-oauth-0.2.1.tgz dsh-openapi-codex-oauth uninstall --profile web --purge-auth
 ```
 
 ## Limitations

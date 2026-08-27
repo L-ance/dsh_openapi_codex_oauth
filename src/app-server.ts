@@ -170,7 +170,7 @@ export class AppServer implements CodexAppServerApi {
       clientInfo: {
         name: 'deepseek_harness',
         title: 'DeepSeek Harness',
-        version: '0.2.0',
+        version: '0.2.1',
       },
       capabilities: { experimentalApi: true },
     })
