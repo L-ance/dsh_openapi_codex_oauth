@@ -14,6 +14,17 @@
 
 ## 本地构建和安装
 
+直接从 GitHub Release 安装已经编译好的版本包：
+
+```sh
+pnpm dsh plugin --profile web add https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.1.0/dsh-openapi-codex-oauth-0.1.0.tgz
+pnpm dsh web
+```
+
+版本包已经包含构建后的 `lib`，不会触发 pnpm 10 对 Git 依赖构建脚本的限制。
+
+从本地源码构建和安装：
+
 ```sh
 npm install
 npm test

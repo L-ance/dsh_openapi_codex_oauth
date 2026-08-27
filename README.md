@@ -14,6 +14,17 @@ The plugin starts the official Codex App Server from `@openai/codex`. App Server
 
 ## Build and install locally
 
+Install the prebuilt package directly from GitHub Releases:
+
+```sh
+pnpm dsh plugin --profile web add https://github.com/L-ance/dsh_openapi_codex_oauth/releases/download/v0.1.0/dsh-openapi-codex-oauth-0.1.0.tgz
+pnpm dsh web
+```
+
+The tarball already contains the compiled `lib`, so it does not trigger pnpm 10's build-script restrictions for Git dependencies.
+
+Build and install from a local checkout:
+
 ```sh
 npm install
 npm test
