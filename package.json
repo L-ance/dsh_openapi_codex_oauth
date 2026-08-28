@@ -1,6 +1,6 @@
 {
   "name": "dsh-openapi-codex-oauth",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "description": "DeepSeek Harness LLM provider backed by Codex App Server and managed ChatGPT OAuth",
   "repository": {
     "type": "git",

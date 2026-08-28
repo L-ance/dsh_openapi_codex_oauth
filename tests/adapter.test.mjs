@@ -7,6 +7,8 @@ class FakeServer {
   events = []
   responses = []
   turnInput = ''
+  threadInput
+  dynamicToolName = 'echo'
 
   async account() { return { type: 'chatgpt', planType: 'plus' } }
   async models() {
@@ -24,7 +26,15 @@ class FakeServer {
   async startBrowserLogin() { return {} }
   async startDeviceLogin() { return {} }
   async logout() {}
-  async startThread() { return 'thread-1' }
+  async startThread(input) {
+    this.threadInput = input
+    const reserved = input.dynamicTools?.find(tool => tool.name.startsWith('mcp__'))
+    if (reserved !== undefined) {
+      throw new Error(`Codex app-server error: {"code":-32600,"message":"dynamic tool name is reserved: ${reserved.name}"}`)
+    }
+    this.dynamicToolName = input.dynamicTools?.[0]?.name ?? 'echo'
+    return 'thread-1'
+  }
   async startTurn(_threadId, input) {
     this.turnInput = input.input[0].text
     this.events.push({
@@ -33,7 +43,7 @@ class FakeServer {
       params: {
         threadId: 'thread-1',
         callId: 'call-1',
-        tool: 'echo',
+        tool: this.dynamicToolName,
         arguments: { text: 'ping' },
       },
     })
@@ -118,6 +128,22 @@ test('bridges a Codex dynamic tool call through the DSH loop', async () => {
   assert.equal(server.responses[0].result.contentItems[0].text, 'pong-from-dsh')
   assert.equal(second.find(chunk => chunk.type === 'block-end').block.text, 'pong')
   assert.deepEqual(second.at(-1).reason, { kind: 'stop' })
+})
+
+test('aliases reserved MCP tool names and maps calls back to DSH names', async () => {
+  const server = new FakeServer()
+  const adapter = new CodexAppServerAdapter(server)
+  const originalName = 'mcp__tapd__add_timesheets'
+  const result = await Array.fromAsync(adapter.stream({
+    ...base,
+    tools: [{ name: originalName, description: 'Add TAPD timesheets', parameters: { type: 'object' } }],
+    messages: [{ id: 'u1', role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: 'add time' }] }],
+  }))
+
+  const wireName = server.threadInput.dynamicTools[0].name
+  assert.doesNotMatch(wireName, /^mcp__/)
+  assert.match(wireName, /^[A-Za-z0-9_-]{1,64}$/)
+  assert.equal(result.find(chunk => chunk.type === 'block-end').block.name, originalName)
 })
 
 test('discovers models dynamically and advertises only implemented modalities', async () => {

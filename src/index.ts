@@ -28,6 +28,13 @@ export const inject = ['llm']
 export const CODEX_PROVIDER_ID = 'openai-codex'
 const REPLAY_KIND = 'dsh-codex-app-server'
 const MAX_LIVE_SESSIONS = 128
+const MAX_DYNAMIC_TOOL_NAME_LENGTH = 64
+
+interface DynamicToolBinding {
+  dshName: string
+  wireName: string
+  definition: JsonObject
+}
 
 interface PendingToolCall {
   requestId: string | number
@@ -39,6 +46,7 @@ interface PendingToolCall {
 interface ProviderSession {
   threadId: string
   toolFingerprint: string
+  toolNames: Map<string, string>
   pendingTools: PendingToolCall[]
   backlog: AppServerEvent[]
   touchedAt: number
@@ -93,13 +101,29 @@ function toolResults(options: GenerateOptions): Map<string, ToolResultBlock> {
   return results
 }
 
-function dynamicTools(options: GenerateOptions): JsonObject[] {
-  return (options.tools ?? []).map(tool => ({
-    type: 'function',
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.parameters,
-  }))
+function dynamicToolBindings(options: GenerateOptions): DynamicToolBinding[] {
+  return (options.tools ?? []).map((tool, index) => {
+    const prefix = `dsh_${String(index)}_`
+    const normalized = tool.name.replace(/[^A-Za-z0-9_-]/g, '_')
+    const wireName = `${prefix}${normalized.slice(0, MAX_DYNAMIC_TOOL_NAME_LENGTH - prefix.length)}`
+    return {
+      dshName: tool.name,
+      wireName,
+      definition: {
+        type: 'function',
+        name: wireName,
+        description: tool.description,
+        inputSchema: tool.parameters,
+      },
+    }
+  })
+}
+
+function dynamicToolFingerprint(bindings: DynamicToolBinding[]): string {
+  return JSON.stringify(bindings.map(binding => ({
+    dshName: binding.dshName,
+    definition: binding.definition,
+  })))
 }
 
 function sessionKey(options: GenerateOptions): string {
@@ -210,7 +234,8 @@ export class CodexAppServerAdapter extends LlmAdapter {
 
   private async createSession(options: GenerateOptions): Promise<ProviderSession> {
     this.evictIdleSession()
-    const tools = dynamicTools(options)
+    const bindings = dynamicToolBindings(options)
+    const tools = bindings.map(binding => binding.definition)
     const system = [
       options.system ?? '',
       'You are the language model inside DeepSeek Harness. DeepSeek Harness owns the agent loop and tool execution.',
@@ -227,7 +252,8 @@ export class CodexAppServerAdapter extends LlmAdapter {
     })
     return {
       threadId,
-      toolFingerprint: JSON.stringify(tools),
+      toolFingerprint: dynamicToolFingerprint(bindings),
+      toolNames: new Map(bindings.map(binding => [binding.wireName, binding.dshName])),
       pendingTools: [],
       backlog: [],
       touchedAt: Date.now(),
@@ -243,7 +269,7 @@ export class CodexAppServerAdapter extends LlmAdapter {
       session = await this.createSession(options)
       this.sessions.set(key, session)
     }
-    if (session.toolFingerprint !== JSON.stringify(dynamicTools(options))) {
+    if (session.toolFingerprint !== dynamicToolFingerprint(dynamicToolBindings(options))) {
       throw new LlmError(
         'Dynamic tool schemas changed during an active DeepSeek Harness session.',
         'UNSUPPORTED_OPTION',
@@ -287,10 +313,14 @@ export class CodexAppServerAdapter extends LlmAdapter {
       if (event.requestId === undefined || typeof callId !== 'string' || typeof tool !== 'string') {
         throw new LlmError('Codex emitted a malformed dynamic-tool request.', 'PROTOCOL_ERROR')
       }
+      const dshName = session.toolNames.get(tool)
+      if (dshName === undefined) {
+        throw new LlmError(`Codex requested an unknown dynamic tool "${tool}".`, 'PROTOCOL_ERROR')
+      }
       calls.push({
         requestId: event.requestId,
         callId,
-        name: tool,
+        name: dshName,
         arguments: event.params.arguments,
       })
     }

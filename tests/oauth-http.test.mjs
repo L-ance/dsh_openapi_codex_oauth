@@ -70,6 +70,45 @@ test('returns account, model, and rate-limit status only to local same-origin re
   assert.equal(remote.status, 403)
 })
 
+test('keeps a valid ChatGPT login connected when optional account details fail', async () => {
+  const server = fakeServer()
+  server.models = async () => { throw new Error('model discovery timed out') }
+  server.rateLimits = async () => { throw new Error('rate limits timed out') }
+
+  const result = response()
+  await handleOAuthRequest(
+    server,
+    { method: 'GET', url: '/api/openai-codex-oauth', headers: localHeaders, socket: localSocket },
+    result,
+  )
+
+  assert.equal(result.status, 200)
+  assert.deepEqual(JSON.parse(result.body), {
+    authenticated: true,
+    email: 'user@example.com',
+    planType: 'pro',
+    models: [],
+    rateLimit: null,
+  })
+})
+
+test('bounds slow optional account details without hiding a valid login', async () => {
+  const server = fakeServer()
+  server.models = () => new Promise(() => {})
+  server.rateLimits = () => new Promise(() => {})
+
+  const result = response()
+  await handleOAuthRequest(
+    server,
+    { method: 'GET', url: '/api/openai-codex-oauth', headers: localHeaders, socket: localSocket },
+    result,
+    5,
+  )
+
+  assert.equal(result.status, 200)
+  assert.equal(JSON.parse(result.body).authenticated, true)
+})
+
 test('starts browser/device login and logout without exposing credentials', async () => {
   const browser = response()
   await handleOAuthRequest(
@@ -94,4 +133,23 @@ test('starts browser/device login and logout without exposing credentials', asyn
     loginId: 'device-1',
   })
   assert.doesNotMatch(device.body, /access.?token|refresh.?token/i)
+})
+
+test('redirects a user-submitted browser login without relying on a popup script', async () => {
+  const redirect = response()
+  await handleOAuthRequest(
+    fakeServer(),
+    {
+      method: 'POST',
+      url: '/api/openai-codex-oauth/login/browser/redirect',
+      headers: localHeaders,
+      socket: localSocket,
+    },
+    redirect,
+  )
+
+  assert.equal(redirect.status, 303)
+  assert.equal(redirect.headers.location, 'https://chatgpt.com/login')
+  assert.equal(redirect.headers['cache-control'], 'no-store')
+  assert.equal(redirect.body, '')
 })

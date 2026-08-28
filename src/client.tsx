@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SettingsSectionOwnerProps } from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -46,7 +46,6 @@ const copy = isChinese ? {
   refresh: '刷新状态',
   models: '账户可用模型',
   noModels: '登录后会从 Codex 动态读取当前账户可用模型。',
-  popup: '如果登录页面没有自动打开，请点击这里。',
   deviceHelp: '打开验证页面并输入设备码：',
   usage: '当前额度窗口已使用',
   resetAt: '重置时间',
@@ -62,7 +61,6 @@ const copy = isChinese ? {
   refresh: 'Refresh status',
   models: 'Models available to this account',
   noModels: 'After sign-in, available models are discovered dynamically from Codex.',
-  popup: 'If the sign-in page did not open, continue here.',
   deviceHelp: 'Open the verification page and enter this code:',
   usage: 'Current limit window used',
   resetAt: 'Resets',
@@ -113,25 +111,32 @@ export function OpenAiOAuthSection(_props: SettingsSectionOwnerProps): ReactNode
   const [status, setStatus] = useState<OAuthStatus>()
   const [busy, setBusy] = useState(false)
   const [waiting, setWaiting] = useState(false)
-  const [authUrl, setAuthUrl] = useState<string>()
   const [device, setDevice] = useState<DeviceLogin>()
   const [error, setError] = useState<string>()
+  const refreshInFlight = useRef<Promise<OAuthStatus | undefined>>()
 
-  const refresh = useCallback(async (): Promise<OAuthStatus | undefined> => {
-    try {
-      const next = await request<OAuthStatus>()
-      setStatus(next)
-      setError(undefined)
-      if (next.authenticated) {
-        setWaiting(false)
-        setAuthUrl(undefined)
-        setDevice(undefined)
+  const refresh = useCallback((): Promise<OAuthStatus | undefined> => {
+    if (refreshInFlight.current !== undefined) return refreshInFlight.current
+    const pending = (async (): Promise<OAuthStatus | undefined> => {
+      try {
+        const next = await request<OAuthStatus>()
+        setStatus(next)
+        setError(undefined)
+        if (next.authenticated) {
+          setWaiting(false)
+          setDevice(undefined)
+        }
+        return next
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : String(reason))
+        return undefined
       }
-      return next
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason))
-      return undefined
-    }
+    })()
+    refreshInFlight.current = pending
+    void pending.finally(() => {
+      if (refreshInFlight.current === pending) refreshInFlight.current = undefined
+    })
+    return pending
   }, [])
 
   useEffect(() => { void refresh() }, [refresh])
@@ -141,34 +146,19 @@ export function OpenAiOAuthSection(_props: SettingsSectionOwnerProps): ReactNode
     return () => window.clearInterval(timer)
   }, [refresh, waiting])
 
-  const browserLogin = async (): Promise<void> => {
-    const popup = window.open('about:blank', '_blank')
-    if (popup !== null) popup.opener = null
-    setBusy(true)
+  const browserLogin = (): void => {
     setError(undefined)
     setDevice(undefined)
-    try {
-      const result = await request<{ authUrl: string }>('/login/browser', 'POST')
-      setAuthUrl(result.authUrl)
-      setWaiting(true)
-      if (popup !== null) popup.location.href = result.authUrl
-    } catch (reason) {
-      popup?.close()
-      setError(reason instanceof Error ? reason.message : String(reason))
-    } finally {
-      setBusy(false)
-    }
+    setWaiting(true)
   }
 
   const deviceLogin = async (): Promise<void> => {
     setBusy(true)
     setError(undefined)
-    setAuthUrl(undefined)
     try {
       const result = await request<DeviceLogin>('/login/device', 'POST')
       setDevice(result)
       setWaiting(true)
-      window.open(result.verificationUrl, '_blank', 'noopener,noreferrer')
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason))
     } finally {
@@ -220,9 +210,16 @@ export function OpenAiOAuthSection(_props: SettingsSectionOwnerProps): ReactNode
           {connected
             ? <button type="button" style={styles.button} disabled={busy} onClick={() => { void logout() }}>{copy.logout}</button>
             : <>
-                <button type="button" style={{ ...styles.button, ...styles.primary }} disabled={busy || waiting} onClick={() => { void browserLogin() }}>
-                  {waiting ? copy.waiting : copy.browserLogin}
-                </button>
+                <form
+                  action={`${ENDPOINT}/login/browser/redirect`}
+                  method="post"
+                  target="_blank"
+                  onSubmit={browserLogin}
+                >
+                  <button type="submit" style={{ ...styles.button, ...styles.primary }} disabled={busy || waiting}>
+                    {waiting ? copy.waiting : copy.browserLogin}
+                  </button>
+                </form>
                 <button type="button" style={styles.button} disabled={busy || waiting} onClick={() => { void deviceLogin() }}>
                   {copy.deviceLogin}
                 </button>
@@ -230,7 +227,6 @@ export function OpenAiOAuthSection(_props: SettingsSectionOwnerProps): ReactNode
           <button type="button" style={styles.button} disabled={busy} onClick={() => { void refresh() }}>{copy.refresh}</button>
         </div>
 
-        {authUrl === undefined ? null : <p><a href={authUrl} target="_blank" rel="noreferrer">{copy.popup}</a></p>}
         {device === undefined ? null : <div>
           <p>{copy.deviceHelp}</p>
           <p><code style={styles.code}>{device.userCode}</code></p>

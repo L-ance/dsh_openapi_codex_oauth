@@ -9,7 +9,7 @@ test('installer registers standard and existing DSH profiles', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-openapi-installer-'))
   const bin = join(root, 'bin')
   const log = join(root, 'npx.log')
-  const packedPlugin = join(root, 'dsh', 'packages', 'dsh-openapi-codex-oauth-0.2.1.tgz')
+  const packedPlugin = join(root, 'dsh', 'packages', 'dsh-openapi-codex-oauth-0.2.3.tgz')
   const packedCodex = join(
     root,
     'dsh',
@@ -71,7 +71,7 @@ test('local installation can target one explicit profile', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dsh-openapi-local-'))
   const bin = join(root, 'bin')
   const log = join(root, 'npx.log')
-  const packedPlugin = join(root, 'dsh', 'packages', 'dsh-openapi-codex-oauth-0.2.1.tgz')
+  const packedPlugin = join(root, 'dsh', 'packages', 'dsh-openapi-codex-oauth-0.2.3.tgz')
   const packedCodex = join(
     root,
     'dsh',
